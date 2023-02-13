@@ -1,154 +1,97 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:url_strategy/url_strategy.dart' as us;
 
-import 'dart:html' as html;
+import 'package:oauth2/easyauth.dart';
+
 import 'dart:core';
 
-/// Main class that runs before user authenticated with a webservice(ws).
-/// 1. Redirects user to [socket]/login and provides [clientID] as parameter '[socket]/login?clientID=[clientID]'
-///
-/// 2. after logging in on the ws the ws has to redirect to 'webAppIP/authcallback' and provide a temporary token
-/// as parameter 'webAppIP/authcallback?token=...'.
-///
-/// 3. The App then sends a http-post to '[socket]/login/verify' with "clientID": [clientID], "token": ...;
-///
-/// 4. expects a bearer token as answer.
-///
-/// 5. checks the token against '[socket]/login/verify' as http-get with 'Authorization': 'Bearer [BearerToken]' as parameter:
-///
-/// 6. if http 200 OK continues with the main app.
-class WebAuth extends StatelessWidget {
-  /// call this in main
-  /// ```dart
-  /// void main() async {
-  ///   runApp(WebAuth(
-  ///     socket: 'http://192.168.178.20:4000',
-  ///     clientID: 'flutterApp',
-  ///     mainApp: MyApp(),
-  ///   ));
-  /// }
-  /// ```'runApp(WebAuth(...));' and provide [socket], [clientID] and [mainApp].
-  WebAuth({
-    required this.socket,
-    required this.clientID,
-    required this.mainApp,
-  });
-  /// Webservice Endpoint e.g. 'http://192.168.0.10:4000'
-  String socket;
-  /// the ID of the application gets passed to the webservice
-  String clientID;
-  /// the root widget of the flutter application after successfully authenticating
-  Widget mainApp;
-  String BearerToken = '';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  us.setPathUrlStrategy();
+  runApp(MyApp());
+}
 
-  /// get Bearer Token from WS
-  Future<void> getBearer(BuildContext context) async {
-    try {
-      final url = Uri.parse('$socket/login/verify');
-      final headers = {"Content-type": "application/json"};
-      final json =
-          '{"clientID": $clientID, "token": ${html.window.localStorage['_tmpToken']}}';
-      html.window.localStorage.remove('_tmpToken');
-      final response = await http.post(url, headers: headers, body: json);
-      BearerToken = response.body;
-      html.window.localStorage['bearer'] = BearerToken;
-      await testToken(context);
-    } catch (e) {
-      print(e);
-    }
-  }
-  /// Test the Bearer Token against the WS if it answers 200 it continues else authentication fails
-  Future<void> testToken(BuildContext context) async {
-    try {
-      BearerToken = html.window.localStorage['bearer']!;
-      final url = Uri.parse('$socket/login/verify');
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $BearerToken',
-      };
-      final response = await http.get(url, headers: headers);
-      if (response.statusCode == 200) {
-        // start 'normal' app
-        runApp(mainApp);
-      } else {
-        BearerToken = '';
-        html.window.localStorage.remove('bearer');
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Zugriff verweigert!')));
-      }
-    } catch (e) {
-      print(e);
-    }
-  }
-
+class MissingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    if (html.window.localStorage.containsKey('bearer')) {
-      testToken(context);
-    }
-
-    return MaterialApp(
-      title: 'Login',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Flutter App'),
       ),
-      onGenerateRoute: (settings) {
-        if (settings.name != null) {
-          var uriData = Uri.parse(settings.name!);
-          switch (uriData.path) {
-            case '/authcallback':
-              Map<String, String> _urlParams = uriData.queryParameters;
-              _urlParams.forEach((key, value) {
-                if (key == 'token')
-                  html.window.localStorage['_tmpToken'] = value;
-                getBearer(context);
-              });
-              break;
-          }
-        }
-        return MaterialPageRoute(
-            builder: (BuildContext context) => WebAuth(
-              socket: this.socket,
-              clientID: this.clientID,
-              mainApp: this.mainApp,
-            ));
-      },
-      home: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            html.window.open('$socket/login?clientID=$clientID', '_self');
-          },
-          child: Text('Anmelden'),
-        ),
+      body: Center(
+        child: Text('404 not found'),
       ),
     );
   }
 }
 
-void main() async {
-  runApp(WebAuth(
-    socket: 'http://192.168.178.20:4000',
-    clientID: 'flutterApp',
-    mainApp: MyApp(),
-  ));
+class MyApp extends StatefulWidget {
+  @override
+  State<MyApp> createState() => _MyApp();
 }
 
-class MyApp extends StatelessWidget {
+class _MyApp extends State<MyApp> {
+  Authenticator authenticator = new Authenticator(
+    authURI: 'https://accounts.google.com/o/oauth2/auth',
+    tokenURI: 'https://oauth2.googleapis.com/token',
+    callbackURI: 'http://127.0.0.1/callback',
+    errorCallback: (message) {
+      print(message);
+    },
+    clientID:
+    '435227925555-nnn5dfj2fn2mmsp9a68o3oqatlpsgupk.apps.googleusercontent.com',
+    clientSecret: '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',
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+  );
+
+  @override
+  void initState() {
+    super.initState();
+
+    authenticator.authRedirectCallback(Uri.base.toString());
+    print(Uri.parse(Uri.base.toString()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter App',
+      debugShowCheckedModeBanner: false,
+      title: 'MyFlutterAppOAuthTest',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: Scaffold(
-        appBar: AppBar(
-          title: Text('Flutter App'),
-        ),
-        body: Center(
-          child: Text('Die Flutter App'),
-        ),
-      ),
+      onGenerateRoute: (settings) {
+        //authenticator.authRedirectCallback(settings);
+        return MaterialPageRoute(builder: (context) => MyApp());
+      },
+      home: Builder(builder: (context) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Flutter App'),
+          ),
+          body: Center(
+            child: Column(
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    authenticator.invokeAuthorisation();
+                  },
+                  child: Text('Login'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    String m = 'not authed!';
+                    if (authenticator.status()) m = 'Authed';
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(m)));
+                  },
+                  child: Text('Status'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
     );
   }
 }
